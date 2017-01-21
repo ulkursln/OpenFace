@@ -1,3 +1,11 @@
+## What's new in modified version
+
+Additional developments including: 
+ (1) allowing manual AOI annotation and outcome visualization with newly proposed input parameters, 
+ (2) enabling building a custom detector and then tracking with that detector, 
+ (3) generating separated output files according to the input parameters and,
+ (4) providing function to export frames in a video. 
+
 # OpenFace: an open source facial behavior analysis toolkit
 
 [![Build Status](https://travis-ci.org/TadasBaltrusaitis/OpenFace.svg?branch=master)](https://travis-ci.org/TadasBaltrusaitis/OpenFace)
@@ -12,6 +20,7 @@ Special thanks goes to Louis-Philippe Morency and his MultiComp Lab at Institute
 **For instructions of how to install/compile/use the project please see [wiki](https://github.com/TadasBaltrusaitis/OpenFace/wiki)**
 
 More details about the project - http://www.cl.cam.ac.uk/research/rainbow/projects/openface/
+
 
 ## Functionality
 

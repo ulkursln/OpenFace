@@ -83,6 +83,9 @@
 		-confidence $confidenceThreshold -eteX $eye_tracker_error_width -eteY $eye_tracker_error_height -sf $startingFrameNo -ef $endingFrameNo
 			(Eg: -showResults -f Rec_01.avi -lf \2d_landmarks.txt -lf \tobiiFilledData_1.txt -aoi \faceAsAOI.txt -etiWidth 640 -etiHeight 480 -confidence 0.7 -eteX 4.8 -eteY 5.2)
 
+	Extract Frames
+		-exportFrames $fileName $folderName (Eg: -exportFrames Rec_01.avi \exportedFrames
+
 */
 
 

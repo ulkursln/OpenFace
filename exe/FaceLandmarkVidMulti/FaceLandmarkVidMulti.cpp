@@ -89,6 +89,12 @@ printErrorAndAbort( std::string( "Fatal error: " ) + stream )
 
 using namespace std;
 
+//global variables are added
+cv::Mat captured_image;
+std::ofstream output_file_face_detection;
+int frame_count;
+string created_detector_file;
+
 vector<string> get_arguments(int argc, char **argv)
 {
 
@@ -131,8 +137,13 @@ int main (int argc, char **argv)
 	vector<string> arguments = get_arguments(argc, argv);
 
 	// Some initial parameters that can be overriden from command line	
-	vector<string> files, depth_directories, tracked_videos_output, dummy_out;
+	vector<string> files, depth_directories, tracked_videos_output;
+	std::map<string, string> dummy_out;
 	
+	// Creating output files for rectangle face detection when program fail to track or detect landmarks
+	output_file_face_detection.open("D:\doktora\TIK4\Projects\outputs_openFace\face_detection.txt", ios_base::out);
+
+
 	// By default try webcam 0
 	int device = 0;
 
@@ -145,6 +156,7 @@ int main (int argc, char **argv)
 	det_params.reinit_video_every = -1;
 
 	det_params.curr_face_detector = LandmarkDetector::FaceModelParameters::HOG_SVM_DETECTOR;
+
 
 	vector<LandmarkDetector::FaceModelParameters> det_parameters;
 	det_parameters.push_back(det_params);
@@ -226,7 +238,7 @@ int main (int argc, char **argv)
 		}
 		else INFO_STREAM( "Device or file opened");
 
-		cv::Mat captured_image;
+	
 		video_capture >> captured_image;		
 		
 
@@ -237,7 +249,7 @@ int main (int argc, char **argv)
 			cy = captured_image.rows / 2.0f;
 		}
 		
-		int frame_count = 0;
+		frame_count = 0;
 		
 		// saving the videos
 		cv::VideoWriter writerFace;

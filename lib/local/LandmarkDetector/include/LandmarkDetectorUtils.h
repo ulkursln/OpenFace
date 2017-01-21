@@ -76,7 +76,7 @@ namespace LandmarkDetector
 	//=============================================================================================
 	// Helper functions for parsing the inputs
 	//=============================================================================================
-	void get_video_input_output_params(vector<string> &input_video_file, vector<string> &depth_dir, vector<string> &output_files,
+	void get_video_input_output_params(vector<string> &input_video_file, vector<string> &depth_dir, std::map<string, string> &output_files,
 		vector<string> &output_video_files, bool& world_coordinates_pose, vector<string> &arguments);
 
 	void get_camera_params(int &device, float &fx, float &fy, float &cx, float &cy, vector<string> &arguments);
@@ -116,6 +116,7 @@ namespace LandmarkDetector
 	vector<cv::Point2d> CalculateLandmarks(const cv::Mat_<double>& shape2D, cv::Mat_<int>& visibilities);
 	vector<cv::Point2d> CalculateLandmarks(CLNF& clnf_model);
 	void DrawLandmarks(cv::Mat img, vector<cv::Point> landmarks);
+	void DrawLandmarks(cv::Mat img, vector<cv::Point> landmarks, cv::Point tobii_data, cv::Rect rect);
 
 	void Draw(cv::Mat img, const cv::Mat_<double>& shape2D, const cv::Mat_<int>& visibilities);
 	void Draw(cv::Mat img, const cv::Mat_<double>& shape2D);
@@ -167,5 +168,10 @@ namespace LandmarkDetector
 	// Skipping comments (lines starting with # symbol)
 	void SkipComments(std::ifstream& stream);
 
+	//============================================================================
+	// String parser
+	//============================================================================
+	//split string
+	vector<std::string> split(const std::string &s, char delim);
 }
 #endif

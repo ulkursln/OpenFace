@@ -59,9 +59,41 @@
 
 // FeatureExtraction.cpp : Defines the entry point for the feature extraction console application.
 
+
+
+
+/*
+   Tracking with defaul detector 
+		-f $video-file -outroot $output-directory -doTracking $0/1 -detectedFaces $file-name (Eg: -f Rec_01.avi -outroot \1 -doTracking 0 -detectedFaces \\detectedFaces.txt)
+			add further arguments to not create following output files:  -no2Dfp -no3Dfp -noAUs -noPose -noGaze -noMparams
+			-doTracking 0:do tot visualize tracking, 1:visualize tracking
+
+   Tracking with pre-trained detector
+		-f $video-file -outroot $output-directory -doTracking $0/1 -detector #face-detectore-file -detectedFaces $file-name (Eg: -f Rec_01.avi -outroot \1 -doTracking 0 -detector \face_detector_1.svm  -detectedFaces \\detectedFaces.txt)
+			add further arguments to not create following output files:  -no2Dfp -no3Dfp -noAUs -noPose -noGaze -noMparams
+			-doTracking 0:do not visualize tracking, 1:visualize tracking
+
+	Label AOI manually
+		-manualAOILabeling  -cpf $output-file -f $video-file -lf $2dlandmark-file -tfd $raw-gazeData-file -aoi $aoi-file -etiWidth $eyetrackerImageWidth -etiHeight $eyetrackerImageHeight 
+		-confidence $confidenceThreshold -eteX $eye_tracker_error_width -eteY $eye_tracker_error_height -sf $startingFrameNo -ef $endingFrameNo
+			(Eg: -manualAOILabeling -cpf \correctedFrames.txt -f Rec_01.avi -lf \2d_landmarks.txt -lf \tobiiFilledData_1.txt -aoi \faceAsAOI.txt -etiWidth 640 -etiHeight 480 -confidence 0.7 -eteX 4.8 -eteY 5.2)
+
+    Review Outcomes
+		-showResults -f $video-file -lf $2dlandmark-file -tfd $raw-gazeData-file -aoi $aoi-file -etiWidth $eyetrackerImageWidth -etiHeight $eyetrackerImageHeight 
+		-confidence $confidenceThreshold -eteX $eye_tracker_error_width -eteY $eye_tracker_error_height -sf $startingFrameNo -ef $endingFrameNo
+			(Eg: -showResults -f Rec_01.avi -lf \2d_landmarks.txt -lf \tobiiFilledData_1.txt -aoi \faceAsAOI.txt -etiWidth 640 -etiHeight 480 -confidence 0.7 -eteX 4.8 -eteY 5.2)
+
+*/
+
+
+
+
+
+
 // System includes
 #include <fstream>
 #include <sstream>
+#include <conio.h>
 
 // OpenCV includes
 #include <opencv2/videoio/videoio.hpp>  // Video write
@@ -91,9 +123,9 @@ std::cout << "Warning: " << stream << std::endl
 #define ERROR_STREAM( stream ) \
 std::cout << "Error: " << stream << std::endl
 
-static void printErrorAndAbort( const std::string & error )
+static void printErrorAndAbort(const std::string & error)
 {
-    std::cout << error << std::endl;
+	std::cout << error << std::endl;
 }
 
 #define FATAL_STREAM( stream ) \
@@ -103,13 +135,34 @@ using namespace std;
 
 using namespace boost::filesystem;
 
+//global variables are added
+cv::Mat captured_image;
+std::ofstream output_file_face_detection;
+int frame_count;
+string created_detector_file;
+string detected_faces_file;
+bool visualizeTracking; //to show video with tracked faces during tracking
+
+
+string current_file;
+std::ifstream starting_ending_frameNos_file;
+std::ifstream landmarks_output_file;
+std::ifstream tobii_data_file; //tobii  data
+std::ifstream AOIs_data_file;
+std::ofstream output_file_corrrected_problematic_frames_file;
+double confidenceThreshold, eye_tracker_error_x, eye_tracker_error_y, starting_frame_No, ending_frame_No;
+int eyeTrackerGeneratedFrameWidth, eyeTrackerGeneratedFrameHeight;
+int participant_no;
+
+
+
 vector<string> get_arguments(int argc, char **argv)
 {
 
 	vector<string> arguments;
 
 	// First argument is reserved for the name of the executable
-	for(int i = 0; i < argc; ++i)
+	for (int i = 0; i < argc; ++i)
 	{
 		arguments.push_back(string(argv[i]));
 	}
@@ -121,14 +174,14 @@ void create_directory_from_file(string output_path)
 {
 
 	// Creating the right directory structure
-	
+
 	// First get rid of the file
 	auto p = path(path(output_path).parent_path());
 
-	if(!p.empty() && !boost::filesystem::exists(p))		
+	if (!p.empty() && !boost::filesystem::exists(p))
 	{
 		bool success = boost::filesystem::create_directories(p);
-		if(!success)
+		if (!success)
 		{
 			cout << "Failed to create a directory... " << p.string() << endl;
 		}
@@ -141,20 +194,22 @@ void create_directory(string output_path)
 	// Creating the right directory structure
 	auto p = path(output_path);
 
-	if(!boost::filesystem::exists(p))		
+	if (!boost::filesystem::exists(p))
 	{
 		bool success = boost::filesystem::create_directories(p);
-		
-		if(!success)
+
+		if (!success)
 		{
 			cout << "Failed to create a directory..." << p.string() << endl;
 		}
 	}
 }
 
-void get_output_feature_params(vector<string> &output_similarity_aligned, vector<string> &output_hog_aligned_files, double &similarity_scale,
+void get_feature_params(vector<string> &output_similarity_aligned, vector<string> &output_hog_aligned_files, double &similarity_scale,
 	int &similarity_size, bool &grayscale, bool& verbose, bool& dynamic, bool &output_2D_landmarks, bool &output_3D_landmarks,
 	bool &output_model_params, bool &output_pose, bool &output_AUs, bool &output_gaze, vector<string> &arguments);
+
+void get_feature_params(vector<string> &arguments);
 
 void get_image_input_output_params_feats(vector<vector<string> > &input_image_files, bool& as_video, vector<string> &arguments);
 
@@ -235,22 +290,59 @@ void outputAllFeatures(std::ofstream* output_file, bool output_2D_landmarks, boo
 	const FaceAnalysis::FaceAnalyser& face_analyser);
 
 void post_process_output_file(FaceAnalysis::FaceAnalyser& face_analyser, string output_file, bool dynamic);
+int doTracking(int argc, char **argv);
+int showResults(int argc, char **argv);
+int manuallyLabelAOI(int argc, char **argv);
+int exportFrames(string videoFilePath, string outputFolder);
+
+void main(int argc, char **argv) {
+
+	//initialize public parameters;
+	created_detector_file = "";
+	visualizeTracking = false;
+	confidenceThreshold = 0; eye_tracker_error_x = 0; eye_tracker_error_y = 0;
+	eyeTrackerGeneratedFrameWidth = 0; eyeTrackerGeneratedFrameHeight = 0;
 
 
-int main (int argc, char **argv)
+	vector<string> arguments = get_arguments(argc, argv);
+	for (int i = 1; i < argc; i++) { /* We will iterate over argv[] to get the parameters stored inside.
+									 * Note that we're starting on 1 because we don't need to know the
+									 * path of the program, which is stored in argv[0] */
+		if (i + 1 != argc) { // Check that we haven't finished parsing already
+			if (arguments[i] == "-doTracking") {
+				doTracking(argc, argv);
+			}
+			else if (arguments[i] == "-showResults") {
+				showResults(argc, argv);
+			}
+			else if (arguments[i].compare("-manualAOILabeling") == 0)
+			{
+				manuallyLabelAOI(argc, argv);
+			}
+
+			else if (arguments[i].compare("-exportFrames") == 0)
+			{
+				exportFrames(arguments[i + 1], arguments[i + 2]);
+			}
+		}
+	}
+}
+
+int doTracking(int argc, char **argv)
 {
 
 	vector<string> arguments = get_arguments(argc, argv);
 
 	// Some initial parameters that can be overriden from command line	
-	vector<string> input_files, depth_directories, output_files, tracked_videos_output;
-	
+	vector<string> input_files, depth_directories, tracked_videos_output;
+	std::map<string, string> output_files;
+
 	LandmarkDetector::FaceModelParameters det_parameters(arguments);
 	// Always track gaze in feature extraction
 	det_parameters.track_gaze = true;
 
 	// Get the input output file parameters
-	
+
 	// Indicates that rotation should be with respect to camera or world coordinates
 	bool use_world_coordinates;
 	LandmarkDetector::get_video_input_output_params(input_files, depth_directories, output_files, tracked_videos_output, use_world_coordinates, arguments);
@@ -262,14 +354,14 @@ int main (int argc, char **argv)
 	vector<vector<string> > input_image_files;
 
 	// Adding image support for reading in the files
-	if(input_files.empty())
+	if (input_files.empty())
 	{
 		vector<string> d_files;
 		vector<string> o_img;
 		vector<cv::Rect_<double>> bboxes;
-		get_image_input_output_params_feats(input_image_files, images_as_video, arguments);	
+		get_image_input_output_params_feats(input_image_files, images_as_video, arguments);
 
-		if(!input_image_files.empty())
+		if (!input_image_files.empty())
 		{
 			video_input = false;
 		}
@@ -280,8 +372,8 @@ int main (int argc, char **argv)
 	float fx = 0, fy = 0, cx = 0, cy = 0;
 	int d = 0;
 	// Get camera parameters
-	LandmarkDetector::get_camera_params(d, fx, fy, cx, cy, arguments);    
-	
+	LandmarkDetector::get_camera_params(d, fx, fy, cx, cy, arguments);
+
 	// If cx (optical axis centre) is undefined will use the image size/2 as an estimate
 	bool cx_undefined = false;
 	bool fx_undefined = false;
@@ -295,14 +387,14 @@ int main (int argc, char **argv)
 	}
 
 	// The modules that are being used for tracking
-	LandmarkDetector::CLNF face_model(det_parameters.model_location);	
+	LandmarkDetector::CLNF face_model(det_parameters.model_location);
 
 	vector<string> output_similarity_align;
 	vector<string> output_hog_align_files;
 
 	double sim_scale = 0.7;
 	int sim_size = 112;
-	bool grayscale = false;	
+	bool grayscale = false;
 	bool video_output = false;
 	bool dynamic = true; // Indicates if a dynamic AU model should be used (dynamic is useful if the video is long enough to include neutral expressions)
 	int num_hog_rows;
@@ -313,17 +405,21 @@ int main (int argc, char **argv)
 	bool output_2D_landmarks = true;
 	bool output_3D_landmarks = true;
 	bool output_model_params = true;
-	bool output_pose = true; 
+	bool output_pose = true;
 	bool output_AUs = true;
 	bool output_gaze = true;
 
-	get_output_feature_params(output_similarity_align, output_hog_align_files, sim_scale, sim_size, grayscale, verbose, dynamic,
+
+	get_feature_params(output_similarity_align, output_hog_align_files, sim_scale, sim_size, grayscale, verbose, dynamic,
 		output_2D_landmarks, output_3D_landmarks, output_model_params, output_pose, output_AUs, output_gaze, arguments);
-	
+
+
+	// Creating output files for rectangle face detection when program fail to track or detect landmarks,, detected_faces_file get_output_feature_params set ediliyor, ondan sonra ça??r
+	output_file_face_detection.open(detected_faces_file, ios_base::out);
 	// Used for image masking
 
 	string tri_loc;
-	if(boost::filesystem::exists(path("model/tris_68_full.txt")))
+	if (boost::filesystem::exists(path("model/tris_68_full.txt")))
 	{
 		tri_loc = "model/tris_68_full.txt";
 	}
@@ -332,20 +428,20 @@ int main (int argc, char **argv)
 		path loc = path(arguments[0]).parent_path() / "model/tris_68_full.txt";
 		tri_loc = loc.string();
 
-		if(!exists(loc))
+		if (!exists(loc))
 		{
 			cout << "Can't find triangulation files, exiting" << endl;
 			return 1;
 		}
-	}	
+	}
 
 	// Will warp to scaled mean shape
 	cv::Mat_<double> similarity_normalised_shape = face_model.pdm.mean_shape * sim_scale;
 	// Discard the z component
-	similarity_normalised_shape = similarity_normalised_shape(cv::Rect(0, 0, 1, 2*similarity_normalised_shape.rows/3)).clone();
+	similarity_normalised_shape = similarity_normalised_shape(cv::Rect(0, 0, 1, 2 * similarity_normalised_shape.rows / 3)).clone();
 
 	// If multiple video files are tracked, use this to indicate if we are done
-	bool done = false;	
+	bool done = false;
 	int f_n = -1;
 	int curr_img = -1;
 
@@ -361,7 +457,7 @@ int main (int argc, char **argv)
 		au_loc_local = "AU_predictors/AU_all_static.txt";
 	}
 
-	if(boost::filesystem::exists(path(au_loc_local)))
+	if (boost::filesystem::exists(path(au_loc_local)))
 	{
 		au_loc = au_loc_local;
 	}
@@ -369,7 +465,7 @@ int main (int argc, char **argv)
 	{
 		path loc = path(arguments[0]).parent_path() / au_loc_local;
 
-		if(exists(loc))
+		if (exists(loc))
 		{
 			au_loc = loc.string();
 		}
@@ -378,30 +474,31 @@ int main (int argc, char **argv)
 			cout << "Can't find AU prediction files, exiting" << endl;
 			return 1;
 		}
-	}	
+	}
 
 	// Creating a  face analyser that will be used for AU extraction
 	FaceAnalysis::FaceAnalyser face_analyser(vector<cv::Vec3d>(), 0.7, 112, 112, au_loc, tri_loc);
-		
-	while(!done) // this is not a for loop as we might also be reading from a webcam
+
+
+	while (!done) // this is not a for loop as we might also be reading from a webcam
 	{
-		
+
 		string current_file;
-		
+
 		cv::VideoCapture video_capture;
-		
-		cv::Mat captured_image;
+
+		//cv::Mat captured_image;
 		int total_frames = -1;
 		int reported_completion = 0;
 
 		double fps_vid_in = -1.0;
 
-		if(video_input)
+		if (video_input)
 		{
 			// We might specify multiple video files as arguments
-			if(input_files.size() > 0)
+			if (input_files.size() > 0)
 			{
-				f_n++;			
+				f_n++;
 				current_file = input_files[f_n];
 			}
 			else
@@ -410,10 +507,10 @@ int main (int argc, char **argv)
 				f_n = 0;
 			}
 			// Do some grabbing
-			if( current_file.size() > 0 )
+			if (current_file.size() > 0)
 			{
-				INFO_STREAM( "Attempting to read from file: " << current_file );
-				video_capture = cv::VideoCapture( current_file );
+				INFO_STREAM("Attempting to read from file: " << current_file);
+				video_capture = cv::VideoCapture(current_file);
 				total_frames = (int)video_capture.get(CV_CAP_PROP_FRAME_COUNT);
 				fps_vid_in = video_capture.get(CV_CAP_PROP_FPS);
 
@@ -435,27 +532,27 @@ int main (int argc, char **argv)
 				INFO_STREAM("Device or file opened");
 			}
 
-			video_capture >> captured_image;	
+			video_capture >> captured_image;
 		}
 		else
 		{
-			f_n++;	
+			f_n++;
 			curr_img++;
-			if(!input_image_files[f_n].empty())
+			if (!input_image_files[f_n].empty())
 			{
 				string curr_img_file = input_image_files[f_n][curr_img];
 				captured_image = cv::imread(curr_img_file, -1);
 			}
 			else
 			{
-				FATAL_STREAM( "No .jpg or .png images in a specified drectory, exiting" );
+				FATAL_STREAM("No .jpg or .png images in a specified drectory, exiting");
 				return 1;
 			}
 
-		}	
-		
+		}
+
 		// If optical centers are not defined just use center of image
-		if(cx_undefined)
+		if (cx_undefined)
 		{
 			cx = captured_image.cols / 2.0f;
 			cy = captured_image.rows / 2.0f;
@@ -469,38 +566,75 @@ int main (int argc, char **argv)
 			fx = (fx + fy) / 2.0;
 			fy = fx;
 		}
-	
+
 		// Creating output files
-		std::ofstream output_file;
+		//std::ofstream output_file; //instead of single file, we generate multiple files specific to each paramater
+		std::ofstream output_2D_landmarks_file;
+		std::ofstream output_3D_landmarks_file;
+		std::ofstream output_model_params_file;
+		std::ofstream output_pose_file;
+		std::ofstream output_AUs_file;
+		std::ofstream output_gaze_file;
+		std::ofstream output_width_height_file;
+
 
 		if (!output_files.empty())
 		{
-			output_file.open(output_files[f_n], ios_base::out);
-			prepareOutputFile(&output_file, output_2D_landmarks, output_3D_landmarks, output_model_params, output_pose, output_AUs, output_gaze, face_model.pdm.NumberOfPoints(), face_model.pdm.NumberOfModes(), face_analyser.GetAUClassNames(), face_analyser.GetAURegNames());
+
+			//output_file.open(output_files[f_n], ios_base::out);
+
+			if (output_2D_landmarks) {
+				output_2D_landmarks_file.open(output_files["2d_landmarks"], ios_base::out);
+				prepareOutputFile(&output_2D_landmarks_file, output_2D_landmarks, false, false, false, false, false, face_model.pdm.NumberOfPoints(), face_model.pdm.NumberOfModes(), face_analyser.GetAUClassNames(), face_analyser.GetAURegNames());
+			}
+			if (output_3D_landmarks) {
+				output_3D_landmarks_file.open(output_files["3d_landmarks"], ios_base::out);
+				prepareOutputFile(&output_3D_landmarks_file, false, output_3D_landmarks, false, false, false, false, face_model.pdm.NumberOfPoints(), face_model.pdm.NumberOfModes(), face_analyser.GetAUClassNames(), face_analyser.GetAURegNames());
+			}
+			if (output_model_params) {
+				output_model_params_file.open(output_files["model_params"], ios_base::out);
+				prepareOutputFile(&output_model_params_file, false, false, output_model_params, false, false, false, face_model.pdm.NumberOfPoints(), face_model.pdm.NumberOfModes(), face_analyser.GetAUClassNames(), face_analyser.GetAURegNames());
+			}
+			if (output_pose) {
+				output_pose_file.open(output_files["pose"], ios_base::out);
+				prepareOutputFile(&output_pose_file, false, false, false, output_pose, false, false, face_model.pdm.NumberOfPoints(), face_model.pdm.NumberOfModes(), face_analyser.GetAUClassNames(), face_analyser.GetAURegNames());
+			}
+			if (output_AUs) {
+				output_AUs_file.open(output_files["AUs"], ios_base::out);
+				prepareOutputFile(&output_AUs_file, false, false, false, false, output_AUs, false, face_model.pdm.NumberOfPoints(), face_model.pdm.NumberOfModes(), face_analyser.GetAUClassNames(), face_analyser.GetAURegNames());
+			}
+			if (output_gaze) {
+				output_gaze_file.open(output_files["openFace_gazeEstimation"], ios_base::out);
+				prepareOutputFile(&output_gaze_file, false, false, false, false, false, output_gaze, face_model.pdm.NumberOfPoints(), face_model.pdm.NumberOfModes(), face_analyser.GetAUClassNames(), face_analyser.GetAURegNames());
+			}
+
+			output_width_height_file.open(output_files["width_height"], ios_base::out);
+			output_width_height_file << "width,height" << endl << captured_image.cols << "," << captured_image.rows << endl;
+			output_width_height_file.close();
 		}
 
 		// Saving the HOG features
 		std::ofstream hog_output_file;
-		if(!output_hog_align_files.empty())
+		if (!output_hog_align_files.empty())
 		{
 			hog_output_file.open(output_hog_align_files[f_n], ios_base::out | ios_base::binary);
 		}
 
 		// saving the videos
 		cv::VideoWriter writerFace;
-		if(!tracked_videos_output.empty())
+		if (!tracked_videos_output.empty())
 		{
 			writerFace = cv::VideoWriter(tracked_videos_output[f_n], CV_FOURCC('D', 'I', 'V', 'X'), fps_vid_in, captured_image.size(), true);
 		}
 
-		int frame_count = 0;
-		
+		frame_count = 0;
+
 		// This is useful for a second pass run (if want AU predictions)
 		vector<cv::Vec6d> params_global_video;
 		vector<bool> successes_video;
 		vector<cv::Mat_<double>> params_local_video;
 		vector<cv::Mat_<double>> detected_landmarks_video;
-				
+
 		// Use for timestamping if using a webcam
 		int64 t_initial = cv::getTickCount();
 
@@ -509,14 +643,15 @@ int main (int argc, char **argv)
 		// Timestamp in seconds of current processing
 		double time_stamp = 0;
 
-		INFO_STREAM( "Starting tracking");
-		while(!captured_image.empty())
-		{		
+		INFO_STREAM("Starting tracking");
+		while (!captured_image.empty())
+		{
+
 
 			// Grab the timestamp first
 			if (video_input)
 			{
-				time_stamp = (double)frame_count * (1.0 / fps_vid_in);				
+				time_stamp = (double)frame_count * (1.0 / fps_vid_in);
 			}
 			else
 			{
@@ -527,19 +662,19 @@ int main (int argc, char **argv)
 			// Reading the images
 			cv::Mat_<uchar> grayscale_image;
 
-			if(captured_image.channels() == 3)
+			if (captured_image.channels() == 3)
 			{
-				cvtColor(captured_image, grayscale_image, CV_BGR2GRAY);				
+				cvtColor(captured_image, grayscale_image, CV_BGR2GRAY);
 			}
 			else
 			{
-				grayscale_image = captured_image.clone();				
+				grayscale_image = captured_image.clone();
 			}
-		
+
 			// The actual facial landmark detection / tracking
 			bool detection_success;
-			
-			if(video_input || images_as_video)
+
+			if (video_input || images_as_video)
 			{
 				detection_success = LandmarkDetector::DetectLandmarksInVideo(grayscale_image, face_model, det_parameters);
 			}
@@ -547,7 +682,7 @@ int main (int argc, char **argv)
 			{
 				detection_success = LandmarkDetector::DetectLandmarksInImage(grayscale_image, face_model, det_parameters);
 			}
-			
+
 			// Gaze tracking, absolute gaze direction
 			cv::Point3f gazeDirection0(0, 0, -1);
 			cv::Point3f gazeDirection1(0, 0, -1);
@@ -563,31 +698,31 @@ int main (int argc, char **argv)
 			cv::Mat_<double> hog_descriptor;
 
 			// But only if needed in output
-			if(!output_similarity_align.empty() || hog_output_file.is_open() || output_AUs)
+			if (!output_similarity_align.empty() || hog_output_file.is_open() || output_AUs)
 			{
 				face_analyser.AddNextFrame(captured_image, face_model, time_stamp, false, !det_parameters.quiet_mode);
 				face_analyser.GetLatestAlignedFace(sim_warped_img);
 
-				if(!det_parameters.quiet_mode)
+				if (!det_parameters.quiet_mode)
 				{
-					cv::imshow("sim_warp", sim_warped_img);			
+					cv::imshow("sim_warp", sim_warped_img);
 				}
-				if(hog_output_file.is_open())
+				if (hog_output_file.is_open())
 				{
-					FaceAnalysis::Extract_FHOG_descriptor(hog_descriptor, sim_warped_img, num_hog_rows, num_hog_cols);						
+					FaceAnalysis::Extract_FHOG_descriptor(hog_descriptor, sim_warped_img, num_hog_rows, num_hog_cols);
 
-					if(visualise_hog && !det_parameters.quiet_mode)
+					if (visualise_hog && !det_parameters.quiet_mode)
 					{
 						cv::Mat_<double> hog_descriptor_vis;
 						FaceAnalysis::Visualise_FHOG(hog_descriptor, num_hog_rows, num_hog_cols, hog_descriptor_vis);
-						cv::imshow("hog", hog_descriptor_vis);	
+						cv::imshow("hog", hog_descriptor_vis);
 					}
 				}
 			}
 
 			// Work out the pose of the head from the tracked model
 			cv::Vec6d pose_estimate;
-			if(use_world_coordinates)
+			if (use_world_coordinates)
 			{
 				pose_estimate = LandmarkDetector::GetCorrectedPoseWorld(face_model, fx, fy, cx, cy);
 			}
@@ -596,13 +731,13 @@ int main (int argc, char **argv)
 				pose_estimate = LandmarkDetector::GetCorrectedPoseCamera(face_model, fx, fy, cx, cy);
 			}
 
-			if(hog_output_file.is_open())
+			if (hog_output_file.is_open())
 			{
 				output_HOG_frame(&hog_output_file, detection_success, hog_descriptor, num_hog_rows, num_hog_cols);
 			}
 
 			// Write the similarity normalised output
-			if(!output_similarity_align.empty())
+			if (!output_similarity_align.empty())
 			{
 
 				if (sim_warped_img.channels() == 3 && grayscale)
@@ -611,18 +746,18 @@ int main (int argc, char **argv)
 				}
 
 				char name[100];
-					
+
 				// output the frame number
 				std::sprintf(name, "frame_det_%06d.bmp", frame_count);
 
 				// Construct the output filename
 				boost::filesystem::path slash("/");
-					
+
 				std::string preferredSlash = slash.make_preferred().string();
-				
+
 				string out_file = output_similarity_align[f_n] + preferredSlash + string(name);
 				bool write_success = imwrite(out_file, sim_warped_img);
-				
+
 				if (!write_success)
 				{
 					cout << "Could not output similarity aligned image image" << endl;
@@ -631,27 +766,56 @@ int main (int argc, char **argv)
 			}
 
 			// Visualising the tracker
-			visualise_tracking(captured_image, face_model, det_parameters, gazeDirection0, gazeDirection1, frame_count, fx, fy, cx, cy);
+			if (visualizeTracking)
+				visualise_tracking(captured_image, face_model, det_parameters, gazeDirection0, gazeDirection1, frame_count, fx, fy, cx, cy);
 
 			// Output the landmarks, pose, gaze, parameters and AUs
-			outputAllFeatures(&output_file, output_2D_landmarks, output_3D_landmarks, output_model_params, output_pose, output_AUs, output_gaze,
-				face_model, frame_count, time_stamp, detection_success, gazeDirection0, gazeDirection1,
-				pose_estimate, fx, fy, cx, cy, face_analyser);
+			if (output_2D_landmarks) {
+				outputAllFeatures(&output_2D_landmarks_file, output_2D_landmarks, false, false, false, false, false,
+					face_model, frame_count, time_stamp, detection_success, gazeDirection0, gazeDirection1,
+					pose_estimate, fx, fy, cx, cy, face_analyser);
+			}
+			if (output_3D_landmarks) {
+				outputAllFeatures(&output_3D_landmarks_file, false, output_3D_landmarks, false, false, false, false,
+					face_model, frame_count, time_stamp, detection_success, gazeDirection0, gazeDirection1,
+					pose_estimate, fx, fy, cx, cy, face_analyser);
+			}
+			if (output_model_params) {
+				outputAllFeatures(&output_model_params_file, false, false, output_model_params, false, false, false,
+					face_model, frame_count, time_stamp, detection_success, gazeDirection0, gazeDirection1,
+					pose_estimate, fx, fy, cx, cy, face_analyser);
+			}
+			if (output_pose) {
+				outputAllFeatures(&output_pose_file, false, false, false, output_pose, false, false,
+					face_model, frame_count, time_stamp, detection_success, gazeDirection0, gazeDirection1,
+					pose_estimate, fx, fy, cx, cy, face_analyser);
+			}
+			if (output_AUs) {
+				outputAllFeatures(&output_AUs_file, false, false, false, false, output_AUs, false,
+					face_model, frame_count, time_stamp, detection_success, gazeDirection0, gazeDirection1,
+					pose_estimate, fx, fy, cx, cy, face_analyser);
+			}
+			if (output_gaze) {
+				outputAllFeatures(&output_gaze_file, false, false, false, false, false, output_gaze,
+					face_model, frame_count, time_stamp, detection_success, gazeDirection0, gazeDirection1,
+					pose_estimate, fx, fy, cx, cy, face_analyser);
+			}
 
-			// output the tracked video
-			if(!tracked_videos_output.empty())
-			{		
+
+						// output the tracked video
+			if (!tracked_videos_output.empty())
+			{
 				writerFace << captured_image;
 			}
 
-			if(video_input)
+			if (video_input)
 			{
 				video_capture >> captured_image;
 			}
 			else
 			{
 				curr_img++;
-				if(curr_img < (int)input_image_files[f_n].size())
+				if (curr_img < (int)input_image_files[f_n].size())
 				{
 					string curr_img_file = input_image_files[f_n][curr_img];
 					captured_image = cv::imread(curr_img_file, -1);
@@ -663,14 +827,14 @@ int main (int argc, char **argv)
 			}
 			// detect key presses
 			char character_press = cv::waitKey(1);
-			
+
 			// restart the tracker
-			if(character_press == 'r')
+			if (character_press == 'r')
 			{
 				face_model.Reset();
 			}
 			// quit the application
-			else if(character_press=='q')
+			else if (character_press == 'q')
 			{
 				return(0);
 			}
@@ -678,9 +842,13 @@ int main (int argc, char **argv)
 			// Update the frame count
 			frame_count++;
 
-			if(total_frames != -1)
+			bool breakPoint = false;
+			if (frame_count == 142)
+				breakPoint = true;
+
+			if (total_frames != -1)
 			{
-				if((double)frame_count/(double)total_frames >= reported_completion / 10.0)
+				if ((double)frame_count / (double)total_frames >= reported_completion / 10.0)
 				{
 					cout << reported_completion * 10 << "% ";
 					reported_completion = reported_completion + 1;
@@ -688,13 +856,22 @@ int main (int argc, char **argv)
 			}
 
 		}
-		
-		output_file.close();
 
-		if(output_files.size() > 0 && output_AUs)
+		//output_file.close();
+		output_2D_landmarks_file.close();
+		output_3D_landmarks_file.close();
+		output_model_params_file.close();
+		output_pose_file.close();
+		output_AUs_file.close();
+		output_gaze_file.close();
+		output_file_face_detection.close();
+
+		if (output_files.size() > 0 && output_AUs)
 		{
 			cout << "Postprocessing the Action Unit predictions" << endl;
-			post_process_output_file(face_analyser, output_files[f_n], dynamic);
+			//post_process_output_file(face_analyser, output_files[f_n], dynamic);
+			post_process_output_file(face_analyser, output_files["AUs"], dynamic);
+
 		}
 		// Reset the models for the next video
 		face_analyser.Reset();
@@ -709,7 +886,7 @@ int main (int argc, char **argv)
 		}
 
 		// break out of the loop if done with all the files (or using a webcam)
-		if((video_input && f_n == input_files.size() -1) || (!video_input && f_n == input_image_files.size() - 1))
+		if ((video_input && f_n == input_files.size() - 1) || (!video_input && f_n == input_image_files.size() - 1))
 		{
 			done = true;
 		}
@@ -785,7 +962,7 @@ void post_process_output_file(FaceAnalysis::FaceAnalyser& face_analyser, string 
 	boost::split(tokens, output_file_contents[0], boost::is_any_of(","));
 
 	int begin_ind = -1;
-	
+
 	for (int i = 0; i < tokens.size(); ++i)
 	{
 		if (tokens[i].find("AU") != string::npos && begin_ind == -1)
@@ -800,7 +977,7 @@ void post_process_output_file(FaceAnalysis::FaceAnalyser& face_analyser, string 
 	std::ofstream outfile(output_file, ios_base::out);
 	// Write the header
 	outfile << output_file_contents[0].c_str() << endl;
-	
+
 	// Write the contents
 	for (int i = 1; i < output_file_contents.size(); ++i)
 	{
@@ -813,7 +990,7 @@ void post_process_output_file(FaceAnalysis::FaceAnalyser& face_analyser, string 
 		{
 			if (t >= begin_ind && t < end_ind)
 			{
-				if(t - begin_ind < num_reg)
+				if (t - begin_ind < num_reg)
 				{
 					outfile << ", " << predictions_reg[inds_reg[t - begin_ind]].second[i - 1];
 				}
@@ -829,7 +1006,7 @@ void post_process_output_file(FaceAnalysis::FaceAnalyser& face_analyser, string 
 		}
 		outfile << endl;
 	}
-		
+
 
 }
 
@@ -929,7 +1106,7 @@ void outputAllFeatures(std::ofstream* output_file, bool output_2D_landmarks, boo
 	// Output the estimated head pose
 	if (output_pose)
 	{
-		if(face_model.tracking_initialised)
+		if (face_model.tracking_initialised)
 		{
 			*output_file << ", " << pose_estimate[0] << ", " << pose_estimate[1] << ", " << pose_estimate[2]
 				<< ", " << pose_estimate[3] << ", " << pose_estimate[4] << ", " << pose_estimate[5];
@@ -945,7 +1122,7 @@ void outputAllFeatures(std::ofstream* output_file, bool output_2D_landmarks, boo
 	{
 		for (int i = 0; i < face_model.pdm.NumberOfPoints() * 2; ++i)
 		{
-			if(face_model.tracking_initialised)
+			if (face_model.tracking_initialised)
 			{
 				*output_file << ", " << face_model.detected_landmarks.at<double>(i);
 			}
@@ -988,7 +1165,7 @@ void outputAllFeatures(std::ofstream* output_file, bool output_2D_landmarks, boo
 		}
 		for (int i = 0; i < face_model.pdm.NumberOfModes(); ++i)
 		{
-			if(face_model.tracking_initialised)
+			if (face_model.tracking_initialised)
 			{
 				*output_file << ", " << face_model.params_local.at<double>(i, 0);
 			}
@@ -1059,7 +1236,7 @@ void outputAllFeatures(std::ofstream* output_file, bool output_2D_landmarks, boo
 }
 
 
-void get_output_feature_params(vector<string> &output_similarity_aligned, vector<string> &output_hog_aligned_files, double &similarity_scale,
+void get_feature_params(vector<string> &output_similarity_aligned, vector<string> &output_hog_aligned_files, double &similarity_scale,
 	int &similarity_size, bool &grayscale, bool& verbose, bool& dynamic,
 	bool &output_2D_landmarks, bool &output_3D_landmarks, bool &output_model_params, bool &output_pose, bool &output_AUs, bool &output_gaze,
 	vector<string> &arguments)
@@ -1094,10 +1271,22 @@ void get_output_feature_params(vector<string> &output_similarity_aligned, vector
 			output_root = arguments[i + 1] + separator;
 			i++;
 		}
+
 	}
 
 	for (size_t i = 0; i < arguments.size(); ++i)
 	{
+		if (arguments[i].compare("-doTracking") == 0)
+		{
+			if (arguments[i + 1] == "0")
+				visualizeTracking = false;
+			else
+				visualizeTracking = true;
+
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+
 		if (arguments[i].compare("-simalign") == 0)
 		{
 			output_similarity_aligned.push_back(output_root + arguments[i + 1]);
@@ -1171,6 +1360,126 @@ void get_output_feature_params(vector<string> &output_similarity_aligned, vector
 			output_gaze = false;
 			valid[i] = false;
 		}
+		else if (arguments[i].compare("-detector") == 0)
+		{
+			created_detector_file = arguments[i + 1];
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+		else if (arguments[i].compare("-detectedFaces") == 0)
+		{
+			detected_faces_file = arguments[i + 1];
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+
+	}
+
+	for (int i = arguments.size() - 1; i >= 0; --i)
+	{
+		if (!valid[i])
+		{
+			arguments.erase(arguments.begin() + i);
+		}
+	}
+
+}
+
+void get_feature_params(vector<string> &arguments)
+{
+
+	bool* valid = new bool[arguments.size()];
+
+	for (size_t i = 0; i < arguments.size(); ++i)
+	{
+		valid[i] = true;
+	}
+
+
+
+	for (size_t i = 0; i < arguments.size(); ++i)
+	{
+
+		if (arguments[i].compare("-showResults") == 0)
+		{
+			valid[i] = false;
+		}
+		else if (arguments[i].compare("-manuallyLabelAOI") == 0)
+		{
+			valid[i] = false;
+		}
+		else if (arguments[i] == "-f") {
+			// We know the next argument *should* be the filename:
+			current_file = arguments[i + 1];
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+		//else if (arguments[i] == "-seff") {//starting ending frames file
+		//	starting_ending_frameNos_file.open(arguments[i + 1]);
+		//	valid[i] = false;
+		//	valid[i + 1] = false;
+		//}
+		else if (arguments[i] == "-sf") {//starting  frames
+			starting_frame_No = stod(arguments[i + 1]);
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+		else if (arguments[i] == "-ef") {// ending frames
+			ending_frame_No = stod(arguments[i + 1]);
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+		else if (arguments[i] == "-pno") { //participant no
+			participant_no = stoi(arguments[i + 1]);
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+		else if (arguments[i] == "-lf") { //2d landmark file
+			landmarks_output_file.open(arguments[i + 1]);
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+		else if (arguments[i] == "-tfd") { //tobii filled data
+			tobii_data_file.open(arguments[i + 1]);
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+		else if (arguments[i] == "-aoi") {
+			AOIs_data_file.open(arguments[i + 1]);
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+		else if (arguments[i] == "-cpf") { //corrected problematic frames
+			output_file_corrrected_problematic_frames_file.open(arguments[i + 1], ios_base::out);
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+		else if (arguments[i] == "-confidence") {
+			confidenceThreshold = stod(arguments[i + 1]);
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+		else if (arguments[i] == "-etiWidth") { //eye tracker generated image's width (it is necessary because it is possible to get different sizes of frame-images from openCV and eye tracker
+			eyeTrackerGeneratedFrameWidth = stod(arguments[i + 1]);
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+		else if (arguments[i] == "-etiHeight") { //eye tracker generated image's height (it is necessary because it is possible to get different sizes of frame-images from openCV and eye tracker
+			eyeTrackerGeneratedFrameHeight = stod(arguments[i + 1]);
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+		else if (arguments[i] == "-eteX") { //Eye tracker error X
+			eye_tracker_error_x = stod(arguments[i + 1]);
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+		else if (arguments[i] == "-eteY") { //Eye tracker error Y
+			eye_tracker_error_y = stod(arguments[i + 1]);
+			valid[i] = false;
+			valid[i + 1] = false;
+		}
+
 	}
 
 	for (int i = arguments.size() - 1; i >= 0; --i)
@@ -1283,3 +1592,764 @@ void output_HOG_frame(std::ofstream* hog_file, bool good_frame, const cv::Mat_<d
 		}
 	}
 }
+
+class PreviousFrames {
+	cv::Mat previous_frame_image;
+	int previous_frame_no;
+	string tobii_line;
+	string line;
+	string AOIs_line;
+
+public:
+	PreviousFrames(cv::Mat image, int frameNo, string _tobii_line, string _line, string _AOIs_line) {
+		previous_frame_image = image.clone();;
+		previous_frame_no = frameNo;
+		tobii_line = _tobii_line;
+		line = _line;
+		AOIs_line = _AOIs_line;
+	}
+
+	PreviousFrames() {};
+
+	cv::Mat get_previous_frame_image() {
+		return previous_frame_image;
+	}
+
+	int get_previous_frame_no() {
+		return previous_frame_no;
+	}
+
+	string get_tobii_line() {
+		return tobii_line;
+	}
+
+	string get_line() {
+		return line;
+	}
+
+	string get_AOIs_line() {
+		return AOIs_line;
+	}
+
+
+};
+
+
+int showResults(int argc, char **argv)
+{
+
+	vector<string> arguments = get_arguments(argc, argv);
+
+	vector<string> input_files;
+
+	LandmarkDetector::FaceModelParameters det_parameters(arguments);
+
+	PreviousFrames playBackObjects[20];
+	int playBackObjectsIndex = 0;
+	int watchIndex = 0;
+	bool playBacktemi = false;
+    std:map<int, std::string> correctedAOIs;
+
+
+	// Get the input output file parameters
+
+	// Indicates that rotation should be with respect to camera or world coordinates
+	bool use_world_coordinates;
+	//LandmarkDetector::get_video_input_output_params(input_files, depth_directories, output_files, tracked_videos_output, use_world_coordinates, arguments);
+
+	bool video_input = true;
+	bool verbose = true;
+	bool images_as_video = false;
+
+	vector<vector<string> > input_image_files;
+
+	// Adding image support for reading in the files
+	if (input_files.empty())
+	{
+		vector<string> d_files;
+		vector<string> o_img;
+		vector<cv::Rect_<double>> bboxes;
+		get_image_input_output_params_feats(input_image_files, images_as_video, arguments);
+
+		if (!input_image_files.empty())
+		{
+			video_input = false;
+		}
+
+	}
+
+	// Grab camera parameters, if they are not defined (approximate values will be used)
+	float fx = 0, fy = 0, cx = 0, cy = 0;
+	int d = 0;
+	// Get camera parameters
+	LandmarkDetector::get_camera_params(d, fx, fy, cx, cy, arguments);
+
+	// If cx (optical axis centre) is undefined will use the image size/2 as an estimate
+	bool cx_undefined = false;
+	bool fx_undefined = false;
+	if (cx == 0 || cy == 0)
+	{
+		cx_undefined = true;
+	}
+	if (fx == 0 || fy == 0)
+	{
+		fx_undefined = true;
+	}
+
+
+
+
+
+	// If multiple video files are tracked, use this to indicate if we are done
+	bool done = false;
+	int f_n = -1;
+
+	while (!done) // this is not a for loop as we might also be reading from a webcam
+	{
+
+
+		cv::VideoCapture video_capture;
+		cv::Mat captured_image;
+		string line, starting_ending_line, tobii_line, AOIs_line;
+
+		
+
+		get_feature_params(arguments);
+		double fps_vid_in = -1.0;
+
+
+
+		if (current_file.size() > 0)
+		{
+			INFO_STREAM("Attempting to read from file: " << current_file);
+			video_capture = cv::VideoCapture(current_file);
+			fps_vid_in = video_capture.get(CV_CAP_PROP_FPS);
+			int total_frame_count = video_capture.get(CV_CAP_PROP_FRAME_COUNT);
+
+
+			// Check if fps is nan or less than 0
+			if (fps_vid_in != fps_vid_in || fps_vid_in <= 0)
+			{
+				INFO_STREAM("FPS of the video file cannot be determined, assuming 30");
+				fps_vid_in = 30;
+			}
+		}
+
+		if (!video_capture.isOpened()) FATAL_STREAM("Failed to open video source");
+		else INFO_STREAM("Device or file opened");
+
+
+		video_capture >> captured_image;
+
+		// If optical centers are not defined just use center of image
+		if (cx_undefined)
+		{
+			cx = captured_image.cols / 2.0f;
+			cy = captured_image.rows / 2.0f;
+		}
+		// Use a rough guess-timate of focal length
+		if (fx_undefined)
+		{
+			fx = 500 * (captured_image.cols / 640.0);
+			fy = 500 * (captured_image.rows / 480.0);
+
+			fx = (fx + fy) / 2.0;
+			fy = fx;
+		}
+
+		if (eyeTrackerGeneratedFrameWidth == 0) //set default values
+			eyeTrackerGeneratedFrameWidth = captured_image.cols;
+		if (eyeTrackerGeneratedFrameHeight == 0)
+			eyeTrackerGeneratedFrameHeight = captured_image.rows;
+
+		getline(landmarks_output_file, line); //skip header
+
+
+		frame_count = 1;
+
+		INFO_STREAM("Starting visiaulizing");
+		int countOfRelatedConfidence = 0;
+
+		int line_no = 0;
+		int first_frame_num = 0, last_frame_num = 0, totalFrameNo = 0;
+
+		first_frame_num = starting_frame_No;
+		last_frame_num = ending_frame_No;
+		totalFrameNo = last_frame_num - first_frame_num;
+		while (!captured_image.empty())
+		{
+
+
+			getline(landmarks_output_file, line);
+			getline(tobii_data_file, tobii_line);
+			getline(AOIs_data_file, AOIs_line);
+
+			if (line.size() == 0 || line.size() == 1)
+				continue;
+			std::vector<std::string> splitted_line_items = LandmarkDetector::split(line, ',');
+			string confidence = splitted_line_items[2];
+			double rawConfidence = stod(confidence);
+
+			splitted_line_items = LandmarkDetector::split(line, ',');
+			int landmarkFile_frameNo = stoi(splitted_line_items[0]);
+
+			bool provideConditions = true;
+			if (confidenceThreshold != 0) {
+				if (rawConfidence >= 0.0 && rawConfidence < confidenceThreshold)
+					provideConditions = true;
+				else
+					provideConditions = false;
+			}
+
+			if (first_frame_num == 0 && last_frame_num == 0) {
+				provideConditions = true;
+			}
+			else {
+				if (landmarkFile_frameNo >= first_frame_num && landmarkFile_frameNo <= last_frame_num)
+					provideConditions = true;
+				else
+					provideConditions = false;
+			}
+
+			if (provideConditions) {
+
+				countOfRelatedConfidence++;
+				vector<cv::Point> data;
+				for (int i = 0; i < 68; i++)
+				{
+					data.push_back(cv::Point(stoi(splitted_line_items[i + 4]), stoi(splitted_line_items[i + 4 + 68])));
+				}
+
+
+				cv::Point tobii_point = cv::Point(0, 0);
+
+				if (!tobii_line.empty()) {
+
+					std::vector<std::string> splitted_tobii_line_items = LandmarkDetector::split(tobii_line, ' ');
+					if (splitted_tobii_line_items[1] == "Unclassified")
+						tobii_point = cv::Point(0, 0);
+					else {
+						int x = stoi(splitted_tobii_line_items[2]);
+						double x_double = x * ((double)captured_image.cols / (double)eyeTrackerGeneratedFrameWidth);
+						int y = stoi(splitted_tobii_line_items[3]);
+						double y_double = y * ((double)captured_image.rows / (double)eyeTrackerGeneratedFrameHeight);
+						tobii_point = (cv::Point(x_double, y_double));
+
+						int rect_x = (int)(x_double - eye_tracker_error_x + 0.5); //add 0.5 to round double value into int
+						int rect_y = (int)(y_double - eye_tracker_error_y + 0.5);
+						int width = (int)((eye_tracker_error_x * 2) + 0.5);
+						int height = (int)((eye_tracker_error_y * 2) + 0.5);
+
+						cv::rectangle(captured_image, cvPoint(rect_x, rect_y), cvPoint((rect_x + width), (rect_y + height)), CV_RGB(0, 255, 0), 5, 8);
+					}
+				}
+
+				cv::Rect rect_head = cv::Rect(0, 0, 0, 0);
+
+				if (!AOIs_line.empty()) {
+					std::vector<std::string> splitted_AOIs_line_items = LandmarkDetector::split(AOIs_line, ' ');
+					if (splitted_AOIs_line_items.size() > 2 ) {
+						std::vector<std::string> splitted_rect_line_items = LandmarkDetector::split(splitted_AOIs_line_items[2], ',');
+						//rect_head = cv::Rect(stoi(splitted_rect_line_items[0]), stoi(splitted_rect_line_items[1]), stoi(splitted_rect_line_items[2]), stoi(splitted_rect_line_items[3]));
+						cv::putText(captured_image, splitted_AOIs_line_items[1], cv::Point(10, 80), CV_FONT_HERSHEY_SIMPLEX, 1, CV_RGB(253, 152, 0));
+					}
+				}
+
+
+				LandmarkDetector::DrawLandmarks(captured_image, data, tobii_point, rect_head);
+				cv::putText(captured_image, to_string(frame_count), cv::Point(10, 20), CV_FONT_HERSHEY_SIMPLEX, 0.5, CV_RGB(255, 0, 0));
+				cv::putText(captured_image, confidence, cv::Point(10, 50), CV_FONT_HERSHEY_SIMPLEX, 0.5, CV_RGB(0, 0, 255));
+				cv::namedWindow("tracking_result", CV_WINDOW_AUTOSIZE);
+				imshow("tracking_result", captured_image);
+
+				char character_press = cv::waitKey(1);
+				cout << character_press << endl;
+				if (character_press == 'q')
+					break;
+
+
+
+			}
+
+			frame_count++;
+			video_capture >> captured_image;
+			string breakStr = "";
+
+
+		}
+
+
+		cout << endl;
+		cout << " Total count for related confidence level: " << countOfRelatedConfidence;
+		cout << endl;
+		cout << " PErcantage of related level to whole: " << ((double)((double)countOfRelatedConfidence / (double)frame_count) * 100);
+		cout << endl;
+
+
+		if (landmarks_output_file.is_open())
+			landmarks_output_file.close();
+		if (tobii_data_file.is_open())
+			tobii_data_file.close();
+		if (AOIs_data_file.is_open())
+			AOIs_data_file.close();
+
+		// break out of the loop if done with all the files (or using a webcam)
+		frame_count = 0;
+
+		// break out of the loop if done with all the files (or using a webcam)
+		if ((video_input && f_n == input_files.size() - 1) || (!video_input && f_n == input_image_files.size() - 1))
+		{
+			done = true;
+		}
+	}
+
+	return 0;
+}
+
+
+int manuallyLabelAOI(int argc, char **argv)
+{
+
+	vector<string> arguments = get_arguments(argc, argv);
+
+	vector<string> input_files;
+
+	LandmarkDetector::FaceModelParameters det_parameters(arguments);
+
+	PreviousFrames playBackObjects[20];
+	int playBackObjectsIndex = 0;
+	int watchIndex = 0;
+	bool isPlayBack = false;
+std:map<int, std::string> correctedAOIs;
+
+
+	// Get the input output file parameters
+
+	// Indicates that rotation should be with respect to camera or world coordinates
+	bool use_world_coordinates;
+	//LandmarkDetector::get_video_input_output_params(input_files, depth_directories, output_files, tracked_videos_output, use_world_coordinates, arguments);
+
+	bool video_input = true;
+	bool images_as_video = false;
+
+	vector<vector<string> > input_image_files;
+
+	// Adding image support for reading in the files
+	if (input_files.empty())
+	{
+		vector<string> d_files;
+		vector<string> o_img;
+		vector<cv::Rect_<double>> bboxes;
+		get_image_input_output_params_feats(input_image_files, images_as_video, arguments);
+
+		if (!input_image_files.empty())
+		{
+			video_input = false;
+		}
+
+	}
+
+	// Grab camera parameters, if they are not defined (approximate values will be used)
+	float fx = 0, fy = 0, cx = 0, cy = 0;
+	int d = 0;
+	// Get camera parameters
+	LandmarkDetector::get_camera_params(d, fx, fy, cx, cy, arguments);
+
+	// If cx (optical axis centre) is undefined will use the image size/2 as an estimate
+	bool cx_undefined = false;
+	bool fx_undefined = false;
+	if (cx == 0 || cy == 0)
+	{
+		cx_undefined = true;
+	}
+	if (fx == 0 || fy == 0)
+	{
+		fx_undefined = true;
+	}
+
+
+
+
+	// If multiple video files are tracked, use this to indicate if we are done
+	bool done = false;
+	int f_n = -1;
+
+	while (!done) // this is not a for loop as we might also be reading from a webcam
+	{
+
+		cv::VideoCapture video_capture;
+		cv::Mat captured_image;
+		string line, starting_ending_line, tobii_line, AOIs_line;
+
+		get_feature_params(arguments);
+		double fps_vid_in = -1.0;
+
+
+
+		if (current_file.size() > 0)
+		{
+			INFO_STREAM("Attempting to read from file: " << current_file);
+			video_capture = cv::VideoCapture(current_file);
+			fps_vid_in = video_capture.get(CV_CAP_PROP_FPS);
+			int total_frame_count = video_capture.get(CV_CAP_PROP_FRAME_COUNT);
+
+
+			// Check if fps is nan or less than 0
+			if (fps_vid_in != fps_vid_in || fps_vid_in <= 0)
+			{
+				INFO_STREAM("FPS of the video file cannot be determined, assuming 30");
+				fps_vid_in = 30;
+			}
+		}
+
+		if (!video_capture.isOpened()) FATAL_STREAM("Failed to open video source");
+		else INFO_STREAM("Device or file opened");
+
+
+		video_capture >> captured_image;
+
+		// If optical centers are not defined just use center of image
+		if (cx_undefined)
+		{
+			cx = captured_image.cols / 2.0f;
+			cy = captured_image.rows / 2.0f;
+		}
+		// Use a rough guess-timate of focal length
+		if (fx_undefined)
+		{
+			fx = 500 * (captured_image.cols / 640.0);
+			fy = 500 * (captured_image.rows / 480.0);
+
+			fx = (fx + fy) / 2.0;
+			fy = fx;
+		}
+
+		if (eyeTrackerGeneratedFrameWidth == 0) //set default values
+			eyeTrackerGeneratedFrameWidth = captured_image.cols;
+		if (eyeTrackerGeneratedFrameHeight == 0)
+			eyeTrackerGeneratedFrameHeight = captured_image.rows;
+
+		getline(landmarks_output_file, line); //skip header
+		cout << line << '\n';
+
+		frame_count = 1;
+
+		INFO_STREAM("Starting visiaulizing");
+		int countOfRelatedConfidence = 0;
+
+		int line_no = 0;
+		int first_frame_num = 0, last_frame_num = 0, totalFrameNo = 0;
+
+		
+		first_frame_num = starting_frame_No;
+		last_frame_num = ending_frame_No;
+		totalFrameNo = last_frame_num - first_frame_num;
+
+		while (!captured_image.empty())
+		{
+
+			if (!isPlayBack) {
+				getline(landmarks_output_file, line);
+				getline(tobii_data_file, tobii_line);
+				getline(AOIs_data_file, AOIs_line);
+			}
+
+
+			if (line.size() == 0 || line.size() == 1)
+				continue;
+			std::vector<std::string> splitted_line_items = LandmarkDetector::split(line, ',');
+			string confidence = splitted_line_items[2];
+			double rawConfidence = stod(confidence);
+
+			splitted_line_items = LandmarkDetector::split(line, ',');
+			int landmarkFile_frameNo = stoi(splitted_line_items[0]);
+
+
+			bool provideConditions = true;
+			if (confidenceThreshold != 0) {
+				if (rawConfidence >= 0.0 && rawConfidence < confidenceThreshold)
+					provideConditions = true;
+				else
+					provideConditions = false;
+			}
+
+			if (first_frame_num == 0 && last_frame_num == 0) {
+				provideConditions = true;
+			}
+			else {
+				if (landmarkFile_frameNo >= first_frame_num && landmarkFile_frameNo <= last_frame_num)
+					provideConditions = true;
+				else
+					provideConditions = false;
+			}
+
+			if (provideConditions) {
+
+				countOfRelatedConfidence++;
+				vector<cv::Point> data;
+				for (int i = 0; i < 68; i++)
+				{
+					data.push_back(cv::Point(stoi(splitted_line_items[i + 4]), stoi(splitted_line_items[i + 4 + 68])));
+				}
+
+
+				cv::Point tobii_point = cv::Point(0, 0);
+
+				if (!tobii_line.empty()) {
+
+					std::vector<std::string> splitted_tobii_line_items = LandmarkDetector::split(tobii_line, ' ');
+					if (splitted_tobii_line_items[1] == "Unclassified")
+						tobii_point = cv::Point(0, 0);
+					else {
+						int x = stoi(splitted_tobii_line_items[2]);
+						double x_double = x * ((double)captured_image.cols / (double)eyeTrackerGeneratedFrameWidth);
+						int y = stoi(splitted_tobii_line_items[3]);
+						double y_double = y * ((double)captured_image.rows / (double)eyeTrackerGeneratedFrameHeight);
+						tobii_point = (cv::Point(x_double, y_double));
+
+						int rect_x = (int)(x_double - eye_tracker_error_x + 0.5); //add 0.5 to round double value into int
+						int rect_y = (int)(y_double - eye_tracker_error_y + 0.5);
+						int width = (int)((eye_tracker_error_x * 2) + 0.5);
+						int height = (int)((eye_tracker_error_y * 2) + 0.5);
+
+						cv::rectangle(captured_image, cvPoint(rect_x, rect_y), cvPoint((rect_x + width), (rect_y + height)), CV_RGB(0, 255, 0), 5, 8);
+					}
+				}
+
+				cv::Rect rect_head = cv::Rect(0, 0, 0, 0);
+
+				if (!AOIs_line.empty()) {
+					std::vector<std::string> splitted_AOIs_line_items = LandmarkDetector::split(AOIs_line, ' ');
+					if (splitted_AOIs_line_items.size() > 2 /*&& splitted_AOIs_line_items[1] != "e"*/) {
+						std::vector<std::string> splitted_rect_line_items = LandmarkDetector::split(splitted_AOIs_line_items[2], ',');
+						//rect_head = cv::Rect(stoi(splitted_rect_line_items[0]), stoi(splitted_rect_line_items[1]), stoi(splitted_rect_line_items[2]), stoi(splitted_rect_line_items[3]));
+						cv::putText(captured_image, splitted_AOIs_line_items[1], cv::Point(10, 80), CV_FONT_HERSHEY_SIMPLEX, 1, CV_RGB(253, 152, 0));
+					}
+				}
+
+
+				LandmarkDetector::DrawLandmarks(captured_image, data, tobii_point, rect_head);
+				cv::putText(captured_image, to_string(frame_count), cv::Point(10, 20), CV_FONT_HERSHEY_SIMPLEX, 0.5, CV_RGB(255, 0, 0));
+				cv::putText(captured_image, confidence, cv::Point(10, 50), CV_FONT_HERSHEY_SIMPLEX, 0.5, CV_RGB(0, 0, 255));
+				cv::namedWindow("tracking_result", CV_WINDOW_AUTOSIZE);
+				imshow("tracking_result", captured_image);
+
+
+
+				char character_press = cv::waitKey(1);
+				cout << character_press << endl;
+				if (character_press == 'q')
+					break;
+
+				while (true) {
+
+					int pressed_key = getch();
+
+					if (pressed_key == 224) { //for left arraw first  224 and then 75 is generated
+						pressed_key = getch();
+
+						if (!isPlayBack) {
+
+							if (playBackObjectsIndex > 19) {
+								for (int i = 0; i < 19;i++)
+									playBackObjects[i] = playBackObjects[i + 1];
+								playBackObjects[19] = PreviousFrames(captured_image, frame_count, tobii_line, line, AOIs_line);
+							}
+							else {
+								playBackObjects[playBackObjectsIndex] = PreviousFrames(captured_image, frame_count, tobii_line, line, AOIs_line);
+							}
+							playBackObjectsIndex++;
+
+							int indexForArray = (frame_count - first_frame_num) > 19 ? 19 : (frame_count - first_frame_num);
+							indexForArray--;
+							captured_image = ((PreviousFrames)playBackObjects[indexForArray]).get_previous_frame_image();
+							frame_count = ((PreviousFrames)playBackObjects[indexForArray]).get_previous_frame_no();
+							tobii_line = ((PreviousFrames)playBackObjects[indexForArray]).get_tobii_line();
+							line = ((PreviousFrames)playBackObjects[indexForArray]).get_line();
+							AOIs_line = ((PreviousFrames)playBackObjects[indexForArray]).get_AOIs_line();
+							watchIndex = indexForArray;
+							isPlayBack = true;
+						}
+						else {
+							watchIndex--;
+							watchIndex = watchIndex < 0 ? 0 : watchIndex;
+							captured_image = ((PreviousFrames)playBackObjects[watchIndex]).get_previous_frame_image();
+							frame_count = ((PreviousFrames)playBackObjects[watchIndex]).get_previous_frame_no();
+							tobii_line = ((PreviousFrames)playBackObjects[watchIndex]).get_tobii_line();
+							line = ((PreviousFrames)playBackObjects[watchIndex]).get_line();
+							AOIs_line = ((PreviousFrames)playBackObjects[watchIndex]).get_AOIs_line();
+
+						}
+						break;
+					}
+
+					else {
+
+						if (pressed_key == 48) {
+							correctedAOIs[frame_count] = "NULL";
+						}
+
+						else if (pressed_key == 55) {
+							correctedAOIs[frame_count] = "a";
+						}
+						else if (pressed_key == 56) {
+							correctedAOIs[frame_count] = "b";
+						}
+						else if (pressed_key == 57) {
+							correctedAOIs[frame_count] = "c";
+						}
+						else if (pressed_key == 52) {
+							correctedAOIs[frame_count] = "d";
+						}
+						else if (pressed_key == 53) {
+							correctedAOIs[frame_count] = "e";
+						}
+						else if (pressed_key == 54) {
+							correctedAOIs[frame_count] = "f";
+						}
+						else if (pressed_key == 49) {
+							correctedAOIs[frame_count] = "g";
+						}
+						else if (pressed_key == 50) {
+							correctedAOIs[frame_count] = "h";
+						}
+						else if (pressed_key == 51) {
+							correctedAOIs[frame_count] = "i";
+
+						}
+
+						if (isPlayBack) {
+							watchIndex++;
+							if (watchIndex > 19) {
+								isPlayBack = false;
+								break;
+							}
+
+							captured_image = ((PreviousFrames)playBackObjects[watchIndex]).get_previous_frame_image();
+							frame_count = ((PreviousFrames)playBackObjects[watchIndex]).get_previous_frame_no();
+							tobii_line = ((PreviousFrames)playBackObjects[watchIndex]).get_tobii_line();
+							line = ((PreviousFrames)playBackObjects[watchIndex]).get_line();
+							AOIs_line = ((PreviousFrames)playBackObjects[watchIndex]).get_AOIs_line();
+						}
+						break;
+					}
+				}
+
+			}
+
+			string breakStr = "";
+
+			if (!isPlayBack) {
+
+				if (((PreviousFrames)playBackObjects[19]).get_previous_frame_no() != frame_count)
+				{
+					if (playBackObjectsIndex > 19) {
+
+						for (int i = 0; i < 19;i++)
+							playBackObjects[i] = playBackObjects[i + 1];
+
+						playBackObjects[19] = PreviousFrames(captured_image, frame_count, tobii_line, line, AOIs_line);
+					}
+
+					else {
+						playBackObjects[playBackObjectsIndex] = PreviousFrames(captured_image, frame_count, tobii_line, line, AOIs_line);
+					}
+				}
+				else {
+					playBackObjects[19] = PreviousFrames(captured_image, frame_count, tobii_line, line, AOIs_line);
+				}
+
+				playBackObjectsIndex++;
+
+				frame_count++;
+				video_capture >> captured_image;
+
+
+			}
+
+		}
+
+		std::map<int, std::string>::iterator it_type;
+		for (it_type = correctedAOIs.begin(); it_type != correctedAOIs.end(); it_type++) {
+			output_file_corrrected_problematic_frames_file << it_type->first << " " << it_type->second << endl;
+		}
+
+
+
+		cout << endl;
+		cout << " Total count for related confidence level: " << countOfRelatedConfidence;
+		cout << endl;
+		cout << " PErcantage of related level to whole: " << ((double)((double)countOfRelatedConfidence / (double)totalFrameNo) * 100);
+		cout << endl;
+		cout << " Total Frame No: " << totalFrameNo;
+		cout << endl;
+		cout << " Last Frame No: " << (frame_count - 1);
+		cout << endl;
+
+
+		output_file_corrrected_problematic_frames_file.close();
+		if (landmarks_output_file.is_open())
+			landmarks_output_file.close();
+		if (tobii_data_file.is_open())
+			tobii_data_file.close();
+		if (AOIs_data_file.is_open())
+			AOIs_data_file.close();
+
+		// break out of the loop if done with all the files (or using a webcam)
+		frame_count = 0;
+
+
+		// break out of the loop if done with all the files (or using a webcam)
+		if ((video_input && f_n == input_files.size() - 1) || (!video_input && f_n == input_image_files.size() - 1))
+		{
+			done = true;
+		}
+	}
+
+	return 0;
+}
+
+int exportFrames(string videoFilePath, string outputFolder) {
+
+	cv::VideoCapture video_capture;
+
+	double fps_vid_in = -1.0;
+
+
+	INFO_STREAM("Attempting to read from file: " << videoFilePath);
+	video_capture = cv::VideoCapture(videoFilePath);
+	fps_vid_in = video_capture.get(CV_CAP_PROP_FPS);
+
+	// Check if fps is nan or less than 0
+	if (fps_vid_in != fps_vid_in || fps_vid_in <= 0)
+	{
+		INFO_STREAM("FPS of the video file cannot be determined, assuming 30");
+		fps_vid_in = 30;
+	}
+
+
+	if (!video_capture.isOpened())
+	{
+		FATAL_STREAM("Failed to open video source, exiting");
+		return 1;
+	}
+	else
+	{
+		INFO_STREAM("Device or file opened");
+	}
+
+	video_capture >> captured_image;
+	frame_count = 0;
+
+
+
+	INFO_STREAM("Start exporting");
+	do 
+	{
+
+		cv::imwrite(outputFolder + "\\" + to_string(frame_count) + ".png", captured_image);
+		frame_count++;
+		video_capture >> captured_image;
+	} while (!captured_image.empty());
+}
+

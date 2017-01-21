@@ -80,6 +80,12 @@
 
 using namespace std;
 
+//global variables are added
+cv::Mat captured_image;
+std::ofstream output_file_face_detection;
+int frame_count;
+string created_detector_file;
+
 vector<string> get_arguments(int argc, char **argv)
 {
 

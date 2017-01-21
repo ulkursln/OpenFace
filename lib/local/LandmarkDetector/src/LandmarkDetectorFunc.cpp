@@ -69,6 +69,11 @@
 #include <vector>
 
 using namespace LandmarkDetector;
+//global variables to read
+extern cv::Mat captured_image;
+extern int frame_count;
+extern std::ofstream output_file_face_detection;
+
 
 // Getting a head pose estimate from the currently detected landmarks (rotation with respect to point camera)
 // The format returned is [Tx, Ty, Tz, Eul_x, Eul_y, Eul_z]
@@ -317,6 +322,7 @@ bool LandmarkDetector::DetectLandmarksInVideo(const cv::Mat_<uchar> &grayscale_i
 		{
 			// Make a record that tracking failed
 			clnf_model.failures_in_a_row++;
+
 		}
 		else
 		{
@@ -328,8 +334,10 @@ bool LandmarkDetector::DetectLandmarksInVideo(const cv::Mat_<uchar> &grayscale_i
 
 	// This is used for both detection (if it the tracking has not been initialised yet) or if the tracking failed (however we do this every n frames, for speed)
 	// This also has the effect of an attempt to reinitialise just after the tracking has failed, which is useful during large motions
-	if((!clnf_model.tracking_initialised && (clnf_model.failures_in_a_row + 1) % (params.reinit_video_every * 6) == 0) 
-		|| (clnf_model.tracking_initialised && !clnf_model.detection_success && params.reinit_video_every > 0 && clnf_model.failures_in_a_row % params.reinit_video_every == 0))
+
+	//TODO to reinitialize when not detect 
+	if((!clnf_model.tracking_initialised ) /*&& (clnf_model.failures_in_a_row + 1) % (params.reinit_video_every * 6) == 0) */
+		|| (clnf_model.tracking_initialised && !clnf_model.detection_success && params.reinit_video_every > 0 /*&& clnf_model.failures_in_a_row % params.reinit_video_every == 0*/))
 	{
 
 		cv::Rect_<double> bounding_box;
@@ -353,6 +361,7 @@ bool LandmarkDetector::DetectLandmarksInVideo(const cv::Mat_<uchar> &grayscale_i
 		if(params.curr_face_detector == FaceModelParameters::HOG_SVM_DETECTOR)
 		{
 			double confidence;
+			
 			face_detection_success = LandmarkDetector::DetectSingleFaceHOG(bounding_box, grayscale_image, clnf_model.face_detector_HOG, confidence, preference_det);
 		}
 		else if(params.curr_face_detector == FaceModelParameters::HAAR_DETECTOR)
@@ -386,6 +395,7 @@ bool LandmarkDetector::DetectLandmarksInVideo(const cv::Mat_<uchar> &grayscale_i
 			// If landmark reinitialisation unsucessful continue from previous estimates
 			// if it's initial detection however, do not care if it was successful as the validator might be wrong, so continue trackig
 			// regardless
+			
 			if(!initial_detection && !landmark_detection_success)
 			{
 
@@ -396,15 +406,25 @@ bool LandmarkDetector::DetectLandmarksInVideo(const cv::Mat_<uchar> &grayscale_i
 				clnf_model.model_likelihood = likelihood_init;
 				clnf_model.detected_landmarks = detected_landmarks_init.clone();
 				clnf_model.landmark_likelihoods = landmark_likelihoods_init.clone();
-
+				
+				cv::rectangle(captured_image, cvPoint(bounding_box.x, bounding_box.y), cvPoint((bounding_box.x+bounding_box.width), (bounding_box.y+bounding_box.height)), CV_RGB(255, 0, 0), 5, 8);
+				output_file_face_detection << frame_count + 1 << " " << bounding_box.x << ", " << bounding_box.y << ", " << bounding_box.width << ", " << bounding_box.height;
+				output_file_face_detection << endl;
 				return false;
 			}
 			else
 			{
 				clnf_model.failures_in_a_row = -1;				
 				UpdateTemplate(grayscale_image, clnf_model);
+				output_file_face_detection << frame_count + 1 << " " << bounding_box.x << ", " << bounding_box.y << ", " << bounding_box.width << ", " << bounding_box.height;
+				output_file_face_detection << endl;
 				return true;
 			}
+		}
+
+		else {
+			output_file_face_detection << frame_count + 1 << " ";
+			output_file_face_detection << endl;
 		}
 	}
 

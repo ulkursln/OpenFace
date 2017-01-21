@@ -93,6 +93,10 @@ static void printErrorAndAbort( const std::string & error )
 printErrorAndAbort( std::string( "Fatal error: " ) + stream )
 
 using namespace std;
+cv::Mat captured_image;
+std::ofstream output_file_face_detection;
+int frame_count;
+string created_detector_file;
 
 vector<string> get_arguments(int argc, char **argv)
 {
@@ -161,6 +165,7 @@ void visualise_tracking(cv::Mat& captured_image, cv::Mat_<float>& depth_image, c
 	string fpsSt("FPS:");
 	fpsSt += fpsC;
 	cv::putText(captured_image, fpsSt, cv::Point(10, 20), CV_FONT_HERSHEY_SIMPLEX, 0.5, CV_RGB(255, 0, 0));
+	cv::putText(captured_image, to_string(frame_count), cv::Point(45, 45), CV_FONT_HERSHEY_SIMPLEX, 0.5, CV_RGB(255, 120, 0));
 
 	if (!det_parameters.quiet_mode)
 	{
@@ -182,7 +187,11 @@ int main (int argc, char **argv)
 	vector<string> arguments = get_arguments(argc, argv);
 
 	// Some initial parameters that can be overriden from command line	
-	vector<string> files, depth_directories, output_video_files, out_dummy;
+	vector<string> files, depth_directories, output_video_files ;
+	std::map<string, string> dummy_out;
+	// Creating output files for rectangle face detection when program fail to track or detect landmarks
+	output_file_face_detection.open("D:\doktora\TIK4\Projects\outputs_openFace\face_detection.txt", ios_base::out);
+
 	
 	// By default try webcam 0
 	int device = 0;
@@ -193,7 +202,7 @@ int main (int argc, char **argv)
 	
 	// Indicates that rotation should be with respect to world or camera coordinates
 	bool u;
-	LandmarkDetector::get_video_input_output_params(files, depth_directories, out_dummy, output_video_files, u, arguments);
+	LandmarkDetector::get_video_input_output_params(files, depth_directories, dummy_out, output_video_files, u, arguments);
 	
 	// The modules that are being used for tracking
 	LandmarkDetector::CLNF clnf_model(det_parameters.model_location);	
@@ -220,6 +229,11 @@ int main (int argc, char **argv)
 	int f_n = -1;
 	
 	det_parameters.track_gaze = true;
+
+
+	//TODO
+	//det_params.curr_face_detector = LandmarkDetector::FaceModelParameters::HOG_SVM_DETECTOR;
+	//det_parameters.curr_face_detector = LandmarkDetector::FaceModelParameters::HAAR_DETECTOR;
 
 	while(!done) // this is not a for loop as we might also be reading from a webcam
 	{
@@ -261,7 +275,7 @@ int main (int argc, char **argv)
 			video_capture = cv::VideoCapture( device );
 
 			// Read a first frame often empty in camera
-			cv::Mat captured_image;
+			//cv::Mat captured_image;
 			video_capture >> captured_image;
 		}
 
@@ -272,7 +286,7 @@ int main (int argc, char **argv)
 		}
 		else INFO_STREAM( "Device or file opened");
 
-		cv::Mat captured_image;
+	
 		video_capture >> captured_image;		
 
 		// If optical centers are not defined just use center of image
@@ -290,8 +304,9 @@ int main (int argc, char **argv)
 			fx = (fx + fy) / 2.0;
 			fy = fx;
 		}		
-	
-		int frame_count = 0;
+
+		
+	     frame_count = 0;
 		
 		// saving the videos
 		cv::VideoWriter writerFace;
@@ -343,7 +358,7 @@ int main (int argc, char **argv)
 			}
 			
 			// The actual facial landmark detection / tracking
-			bool detection_success = LandmarkDetector::DetectLandmarksInVideo(grayscale_image, depth_image, clnf_model, det_parameters);
+			bool detection_success = LandmarkDetector::DetectLandmarksInVideo( grayscale_image, depth_image, clnf_model, det_parameters);
 			
 			// Visualising the results
 			// Drawing the facial landmarks on the face and the bounding box around it if tracking is successful and initialised

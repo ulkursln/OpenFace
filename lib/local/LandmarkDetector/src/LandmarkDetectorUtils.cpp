@@ -72,6 +72,7 @@
 using namespace boost::filesystem;
 
 using namespace std;
+extern string created_detector_file;
 
 namespace LandmarkDetector
 {
@@ -115,7 +116,7 @@ void create_directories(string output_path)
 }
 
 // Extracting the following command line arguments -f, -fd, -op, -of, -ov (and possible ordered repetitions)
-void get_video_input_output_params(vector<string> &input_video_files, vector<string> &depth_dirs, vector<string> &output_files,
+void get_video_input_output_params(vector<string> &input_video_files, vector<string> &depth_dirs, std::map<string, string> &output_files,
 	vector<string> &output_video_files, bool& world_coordinates_pose, vector<string> &arguments)
 {
 	bool* valid = new bool[arguments.size()];
@@ -172,14 +173,16 @@ void get_video_input_output_params(vector<string> &input_video_files, vector<str
 			valid[i+1] = false;		
 			i++;
 		}
-		else if (arguments[i].compare("-of") == 0)
-		{
-			output_files.push_back(output_root + arguments[i + 1]);
-			create_directory_from_file(output_root + arguments[i + 1]);
-			valid[i] = false;
-			valid[i+1] = false;
-			i++;
-		}
+		//else if (arguments[i].compare("-of") == 0)
+		//{
+
+
+		//	//output_files.push_back(output_root + arguments[i + 1]);
+		//	//create_directory_from_file(output_root + arguments[i + 1]);
+		///valid[i] = false;
+		//	valid[i+1] = false;*/
+		//	//i++;
+		//}
 		else if (arguments[i].compare("-ov") == 0)
 		{
 			output_video_files.push_back(output_root + arguments[i + 1]);
@@ -193,6 +196,17 @@ void get_video_input_output_params(vector<string> &input_video_files, vector<str
 			world_coordinates_pose = true;
 		}
 	}
+
+	//create output file names, it is not nessary to create file for the path, it is decided later with the send parameters to the program
+	output_files["2d_landmarks"] = output_root + "2d_landmarks.txt";
+	create_directory_from_file(output_files["2d_landmarks"]);
+
+	output_files["3d_landmarks"] = output_root + "3d_landmarks.txt";
+	output_files["model_params"] = output_root + "model_params.txt";
+	output_files["pose"] = output_root + "pose.txt";
+	output_files["AUs"] = output_root + "AUs.txt";
+	output_files["openFace_gazeEstimation"] = output_root + "openFace_gazeEstimation.txt";
+	output_files["width_height"] = output_root + "width_height.txt";
 
 	for(int i=arguments.size()-1; i >= 0; --i)
 	{
@@ -1203,6 +1217,29 @@ void DrawLandmarks(cv::Mat img, vector<cv::Point> landmarks)
 	
 }
 
+
+void DrawLandmarks(cv::Mat img, vector<cv::Point> landmarks, cv::Point tobii_data, cv::Rect rect)
+{
+	for (cv::Point p : landmarks)
+	{
+		// A rough heuristic for drawn point size
+		int thickness = (int)std::ceil(5.0* ((double)img.cols) / 640.0);
+		int thickness_2 = (int)std::ceil(1.5* ((double)img.cols) / 640.0);
+
+		cv::circle(img, p, 1, cv::Scalar(0, 0, 255), thickness);
+		cv::circle(img, p, 1, cv::Scalar(255, 0, 0), thickness_2);
+
+		cv::circle(img, tobii_data, 1, cv::Scalar(200, 200, 255), thickness);//tobii_data
+																		 //cv::circle(img, Point(465, 195), 1, Scalar(100, 100, 155), thickness);//tobii_data
+
+		rectangle(img, cv::Point(rect.x, rect.y), cv::Point(rect.x + rect.width, rect.y + rect.height), cv::Scalar(100, 155, 25), -1, 8);
+
+
+	}
+
+}
+
+
 //===========================================================================
 // Angle representation conversion helpers
 //===========================================================================
@@ -1304,6 +1341,7 @@ bool DetectFaces(vector<cv::Rect_<double> >& o_regions, const cv::Mat_<uchar>& i
 		
 	vector<cv::Rect> face_detections;
 	classifier.detectMultiScale(intensity, face_detections, 1.2, 2, 0, cv::Size(50, 50));
+
 
 	// Convert from int bounding box do a double one with corrections
 	o_regions.resize(face_detections.size());
@@ -1408,7 +1446,23 @@ bool DetectFacesHOG(vector<cv::Rect_<double> >& o_regions, const cv::Mat_<uchar>
 	dlib::cv_image<uchar> cv_grayscale(upsampled_intensity);
 
 	std::vector<dlib::full_detection> face_detections;
-	detector(cv_grayscale, face_detections, -0.2);
+
+	if (created_detector_file != "") {
+		// with trained detector
+		typedef dlib::scan_fhog_pyramid<dlib::pyramid_down<6> > image_scanner_type;
+		dlib::object_detector<image_scanner_type> detector1;
+		dlib::deserialize(created_detector_file) >> detector1;
+		detector1(cv_grayscale, face_detections, -0.2);
+		//////////////////
+	}
+	else {
+		//default detector
+		detector(cv_grayscale, face_detections, -0.2);
+	}
+	
+	
+	
+
 
 	// Convert from int bounding box do a double one with corrections
 	o_regions.resize(face_detections.size());
@@ -1589,6 +1643,24 @@ void SkipComments(std::ifstream& stream)
 		std::string skipped;
 		std::getline(stream, skipped);
 	}
+}
+
+//////////// String parser
+
+std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems) {
+	std::stringstream ss(s);
+	std::string item;
+	while (std::getline(ss, item, delim)) {
+		elems.push_back(item);
+	}
+	return elems;
+}
+
+
+std::vector<std::string> split(const std::string &s, char delim) {
+	std::vector<std::string> elems;
+	split(s, delim, elems);
+	return elems;
 }
 
 }

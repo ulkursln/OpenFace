@@ -1,35 +1,50 @@
 ## What's new in modified version
 
-Following features are added: \n
- (1) allowing manual AOI annotation and outcome visualization with newly proposed input parameters, \n
- (2) enabling tracking with custom detector, \n
- (3) generating separated output files according to the input parameters and, \n
- (4) providing function to export frames in a video. \n
+Following features are added: 
+
+	* allowing manual AOI annotation and outcome visualization with newly proposed input parameters, 
+	* enabling tracking with custom detector, 
+	* generating separated output files according to the input parameters and, 
+ 	* providing function to export frames in a video.  
+	
+####Instructions to use added features:
  
- **Instructions to use added features:
+ **Tracking with defaul detector** 
  
- #### Tracking with defaul detector 
-		-f $video-file -outroot $output-directory -doTracking $0/1 -detectedFaces $file-name (Eg: -f Rec_01.avi -outroot \1 -doTracking 0 -detectedFaces \\detectedFaces.txt)
-			add further arguments to not create following output files:  -no2Dfp -no3Dfp -noAUs -noPose -noGaze -noMparams
-			-doTracking 0:do tot visualize tracking, 1:visualize tracking
+	-f $video-file -outroot $output-directory -doTracking $0/1 -detectedFaces $file-name (Eg: -f Rec_01.avi -outroot \1 -doTracking 
+	0 -detectedFaces \\detectedFaces.txt)
+		add further arguments to not create following output files:  -no2Dfp -no3Dfp -noAUs -noPose -noGaze -noMparams
+		-doTracking 0:do tot visualize tracking, 1:visualize tracking
 
- #### Tracking with pre-trained detector
-		-f $video-file -outroot $output-directory -doTracking $0/1 -detector #face-detectore-file -detectedFaces $file-name (Eg: -f Rec_01.avi -outroot \1 -doTracking 0 -detector \face_detector_1.svm  -detectedFaces \\detectedFaces.txt)
-			add further arguments to not create following output files:  -no2Dfp -no3Dfp -noAUs -noPose -noGaze -noMparams
-			-doTracking 0:do not visualize tracking, 1:visualize tracking
+ **Tracking with pre-trained detector**
+ 
+	-f $video-file -outroot $output-directory -doTracking $0/1 -detector #face-detectore-file -detectedFaces $file-name 
+	
+	(Eg: -f Rec_01.avi -outroot \1 -doTracking 0 -detector \face_detector_1.svm  -detectedFaces \\detectedFaces.txt)
+		add further arguments to not create following output files:  -no2Dfp -no3Dfp -noAUs -noPose -noGaze -noMparams
+		-doTracking 0:do not visualize tracking, 1:visualize tracking
 
-	#### Label AOI manually
-		-manualAOILabeling  -cpf $output-file -f $video-file -lf $2dlandmark-file -tfd $raw-gazeData-file -aoi $aoi-file -etiWidth $eyetrackerImageWidth -etiHeight $eyetrackerImageHeight 
-		-confidence $confidenceThreshold -eteX $eye_tracker_error_width -eteY $eye_tracker_error_height -sf $startingFrameNo -ef $endingFrameNo
-			(Eg: -manualAOILabeling -cpf \correctedFrames.txt -f Rec_01.avi -lf \2d_landmarks.txt -lf \tobiiFilledData_1.txt -aoi \faceAsAOI.txt -etiWidth 640 -etiHeight 480 -confidence 0.7 -eteX 4.8 -eteY 5.2)
+**Label AOI manually**
 
-  #### Review Outcomes
-		-showResults -f $video-file -lf $2dlandmark-file -tfd $raw-gazeData-file -aoi $aoi-file -etiWidth $eyetrackerImageWidth -etiHeight $eyetrackerImageHeight 
-		-confidence $confidenceThreshold -eteX $eye_tracker_error_width -eteY $eye_tracker_error_height -sf $startingFrameNo -ef $endingFrameNo
-			(Eg: -showResults -f Rec_01.avi -lf \2d_landmarks.txt -lf \tobiiFilledData_1.txt -aoi \faceAsAOI.txt -etiWidth 640 -etiHeight 480 -confidence 0.7 -eteX 4.8 -eteY 5.2)
+	-manualAOILabeling  -cpf $output-file -f $video-file -lf $2dlandmark-file -tfd $raw-gazeData-file -aoi $aoi-file -etiWidth
+	$eyetrackerImageWidth -etiHeight $eyetrackerImageHeight -confidence $confidenceThreshold -eteX $eye_tracker_error_width -eteY
+	$eye_tracker_error_height -sf $startingFrameNo -ef $endingFrameNo
+	
+	(Eg: -manualAOILabeling -cpf \correctedFrames.txt -f Rec_01.avi -lf \2d_landmarks.txt -lf \tobiiFilledData_1.txt -aoi
+	\faceAsAOI.txt -etiWidth 640 -etiHeight 480 -confidence 0.7 -eteX 4.8 -eteY 5.2)
 
-	#### Extract Frames
-		-exportFrames $fileName $folderName (Eg: -exportFrames Rec_01.avi \exportedFrames
+**Review Outcomes**
+
+	-showResults -f $video-file -lf $2dlandmark-file -tfd $raw-gazeData-file -aoi $aoi-file -etiWidth $eyetrackerImageWidth 
+	-etiHeight $eyetrackerImageHeight -confidence $confidenceThreshold -eteX $eye_tracker_error_width -eteY 	
+	$eye_tracker_error_height -sf $startingFrameNo -ef $endingFrameNo
+			
+	(Eg: -showResults -f Rec_01.avi -lf \2d_landmarks.txt -lf \tobiiFilledData_1.txt -aoi \faceAsAOI.txt -etiWidth 640 -etiHeight
+	480 -confidence 0.7 -eteX 4.8 -eteY 5.2)
+
+**Extract Frames**
+
+	-exportFrames $fileName $folderName (Eg: -exportFrames Rec_01.avi \exportedFrames
 
 # OpenFace: an open source facial behavior analysis toolkit
 

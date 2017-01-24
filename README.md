@@ -1,3 +1,5 @@
+********************************************************MAGiC*************************************************************
+
 ## What's new in modified version
 
 Following features are added: 
@@ -45,6 +47,10 @@ Following features are added:
 **Extract Frames**
 
 	-exportFrames $fileName $folderName (Eg: -exportFrames Rec_01.avi \exportedFrames
+	
+	
+********************************************************MAGiC*************************************************************
+
 
 # OpenFace: an open source facial behavior analysis toolkit
 
